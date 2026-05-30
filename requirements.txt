@@ -1,0 +1,10 @@
+flask
+flask-socketio
+selenium
+webdriver-manager
+pillow
+qrcode
+requests
+gunicorn
+eventlet
+python-telegram-bot
