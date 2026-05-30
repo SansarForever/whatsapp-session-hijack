@@ -71,21 +71,48 @@ def is_admin(user_id):
     return cursor.fetchone() is not None
 
 def is_premium(user_id):
-    cursor.execute("SELECT premium_until, is_lifetime, is_banned FROM users WHERE user_id = ?", (user_id,))
-    result = cursor.fetchone()
-    if not result:
-        return False
-    premium_until, is_lifetime, is_banned = result
-    if is_banned:
-        return False
-    if is_lifetime:
-        return True
-    if premium_until:
+    def start_browser(self):
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    chrome_options.add_argument('--remote-debugging-port=9222')
+    
+    # Otomatik Chrome bul
+    import shutil
+    chrome_paths = [
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium-browser", 
+        "/opt/google/chrome/chrome",
+        "/snap/bin/chromium"
+    ]
+    chrome_bin = None
+    for p in chrome_paths:
+        if os.path.exists(p):
+            chrome_bin = p
+            break
+    
+    if not chrome_bin:
+        chrome_bin = shutil.which("google-chrome") or shutil.which("chromium-browser") or shutil.which("chromium")
+    
+    chrome_options.binary_location = chrome_bin
+    
+    try:
+        from webdriver_manager.chrome import ChromeDriverManager
+        self.driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()),
+            options=chrome_options
+        )
+    except Exception as e:
+        logger.error(f"Chrome başlatılamadı: {e}")
+        # Chromedriver'ı manuel dene
         try:
-            until = datetime.fromisoformat(premium_until)
-            if until > datetime.now():
-                return True
+            self.driver = webdriver.Chrome(options=chrome_options)
         except:
+            raise
             pass
     return False
 
